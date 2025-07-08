@@ -1,11 +1,5 @@
-
----
-
-🗂 File: reproducer_pg_limit_bind_bug.py
-
 # reproducer_pg_limit_bind_bug.py
-# Reproducer for a bug in QuestDB PG wire protocol (e.g., LIMIT $1 or IN ($1, $2))
-# Tested using psycopg2 (Python) against QuestDB running on localhost
+# Reproducer for potential bug in QuestDB PG wire protocol using bind variables in LIMIT and IN clauses
 
 import psycopg2
 
@@ -20,7 +14,7 @@ conn = psycopg2.connect(
 
 cur = conn.cursor()
 
-# Create a test table
+# Create test table
 cur.execute("""
     CREATE TABLE IF NOT EXISTS test_events (
         id INT,
@@ -29,73 +23,45 @@ cur.execute("""
     )
 """)
 
-# Insert sample data
+# Insert test data
+cur.execute("DELETE FROM test_events")  # Clear previous data
 cur.execute("INSERT INTO test_events (id, name, facility) VALUES (1, 'alpha', 'core')")
 cur.execute("INSERT INTO test_events (id, name, facility) VALUES (2, 'beta', 'edge')")
 cur.execute("INSERT INTO test_events (id, name, facility) VALUES (3, 'gamma', 'core')")
 conn.commit()
 
-# Try a query with a bind parameter in LIMIT clause (this used to fail)
+# Test 1: LIMIT with bind parameter
+print("\n=== LIMIT bind test ===")
 try:
     cur.execute("SELECT * FROM test_events LIMIT %s", (2,))
     rows = cur.fetchall()
-    print("LIMIT bind test passed. Rows returned:")
+    print("✅ LIMIT bind test passed. Rows returned:")
     for row in rows:
         print(row)
 except Exception as e:
-    print("LIMIT bind test failed with error:", e)
+    print("❌ LIMIT bind test failed with error:", e)
 
-# Try a query using IN clause with multiple bind variables
+# Test 2: LIMIT + OFFSET
+print("\n=== LIMIT + OFFSET bind test ===")
+try:
+    cur.execute("SELECT * FROM test_events LIMIT %s OFFSET %s", (1, 1))
+    rows = cur.fetchall()
+    print("✅ LIMIT + OFFSET bind test passed. Rows returned:")
+    for row in rows:
+        print(row)
+except Exception as e:
+    print("❌ LIMIT + OFFSET bind test failed with error:", e)
+
+# Test 3: IN clause with multiple binds
+print("\n=== IN clause bind test ===")
 try:
     cur.execute("SELECT * FROM test_events WHERE name IN (%s, %s)", ('alpha', 'gamma'))
     rows = cur.fetchall()
-    print("\nIN clause bind test passed. Rows returned:")
+    print("✅ IN clause bind test passed. Rows returned:")
     for row in rows:
         print(row)
 except Exception as e:
-    print("IN clause bind test failed with error:", e)
+    print("❌ IN clause bind test failed with error:", e)
 
 cur.close()
 conn.close()
-
-
----
-
-📝 Optional: README.md
-
-# QuestDB Bug Reproducer – PG Wire Bind Parameter Issues
-
-This script reproduces bugs in QuestDB related to bind parameters via PostgreSQL wire protocol,
-specifically when using `LIMIT $n` or `IN ($1, $2)` clauses.
-
-## Prerequisites
-
-- QuestDB running locally with PG wire support (port 8812)
-- Python 3
-- `psycopg2` library (`pip install psycopg2`)
-
-## How to Run
-
-```bash
-python reproducer_pg_limit_bind_bug.py
-
-Expected Output
-
-Should print:
-
-Rows from LIMIT %s query (2 rows)
-
-Rows from IN (%s, %s) query
-
-
-If there’s a bug, you’ll see errors like:
-
-undefined bind variable
-
-Related Issue
-
-See: https://community.questdb.com/t/some-prepared-statements-originating-from-ruby-pg-gem-result-in-errors-on-questdb-8-2-0/254
-
----
-
-
